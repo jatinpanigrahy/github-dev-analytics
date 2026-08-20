@@ -4,7 +4,7 @@ A lightweight, efficient dashboard for analyzing public GitHub profiles. It's de
 
 ## Preview
 
-> ![App Preview](assets/1.png)
+![App Preview](assets/1.png)
 
 **🔗 [View Live Application](https://jatinp-inteldashboard.streamlit.app/)**
 
