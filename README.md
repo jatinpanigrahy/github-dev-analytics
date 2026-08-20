@@ -6,7 +6,7 @@ A lightweight, efficient dashboard for analyzing public GitHub profiles. It's de
 
 > ![App Preview](assets/1.png)
 
-**🔗 [View Live Application](https://jatinp-github-inteldashboard.streamlit.app/)**
+**🔗 [View Live Application](https://jatinp-inteldashboard.streamlit.app/)**
 
 ## Core Features
 
@@ -24,4 +24,4 @@ A lightweight, efficient dashboard for analyzing public GitHub profiles. It's de
 ## Deployment
 This application is deployed via Streamlit Community Cloud.
 
-**Live Application:** https://jatinp-github-inteldashboard.streamlit.app/
+**Live Application:** https://jatinp-inteldashboard.streamlit.app/
