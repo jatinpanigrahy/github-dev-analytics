@@ -8,6 +8,7 @@ A lightweight, efficient dashboard for analyzing public GitHub profiles. It's de
 
 **🔗 [View Live Application](https://jatinp-inteldashboard.streamlit.app/)**
 
+
 ## Core Features
 
 - **Profile Overview:** Summarizes user identity, account age, and social reach.
@@ -19,6 +20,7 @@ A lightweight, efficient dashboard for analyzing public GitHub profiles. It's de
 
 - **Python**
 - **Streamlit** 
+- **RESTful APIs**
 - **Requests, Pandas & Altair**
 
 ## Deployment
