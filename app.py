@@ -4,7 +4,9 @@ import pandas as pd
 import altair as alt
 from datetime import datetime
 
-st.set_page_config(page_title="GitHub Intelligence", layout="wide")
+st.set_page_config(
+    page_title="GitHub Intelligence", page_icon="assets/favicon.svg", layout="wide"
+)
 
 st.markdown(
     """
