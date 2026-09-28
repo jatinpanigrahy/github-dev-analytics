@@ -1,11 +1,25 @@
-import streamlit as st
-import requests
-import pandas as pd
+"""GitHub Intelligence Dashboard.
+
+A Streamlit-based OSINT application interfacing with the GitHub REST API
+to extract, aggregate, and visualize developer profiles, repository statistics,
+and programming language distributions.
+"""
+
+from datetime import datetime, timezone
+
 import altair as alt
-from datetime import datetime
+import pandas as pd
+import requests
+import streamlit as st
+
+# ==============================================================================
+# Page Configuration & Global Styling
+# ==============================================================================
 
 st.set_page_config(
-    page_title="GitHub Intelligence", page_icon="assets/favicon.svg", layout="wide"
+    page_title="GitHub Intelligence",
+    page_icon="assets/favicon.svg",
+    layout="wide",
 )
 
 st.markdown(
@@ -35,46 +49,118 @@ st.markdown(
     "View developer profiles, repository statistics, and programming languages."
 )
 
+# ==============================================================================
+# Network Integration Layer (GitHub REST API)
+# ==============================================================================
+
+
+def handle_response(r: requests.Response) -> dict:
+    """Evaluate an HTTP response from the GitHub API and normalize into an outcome dictionary.
+
+    Args:
+        r: Raw requests.Response instance.
+
+    Returns:
+        Dictionary containing standardized outcome status ('success' or 'error')
+        along with the JSON payload or failure diagnostics.
+    """
+    if r.status_code == 200:
+        return {"status": "success", "data": r.json()}
+    elif r.status_code == 403:
+        # Standard GitHub API rate-limit exceeded indicator
+        return {"status": "error", "reason": "rate_limit", "code": 403}
+    elif r.status_code == 404:
+        return {"status": "error", "reason": "not_found", "code": 404}
+    else:
+        return {"status": "error", "reason": "unknown", "code": r.status_code}
+
 
 @st.cache_data(ttl=3600)
 def fetch_profile(username: str) -> dict:
-    r = requests.get(f"https://api.github.com/users/{username}")
-    return (
-        {"status": "success", "data": r.json()}
-        if r.status_code == 200
-        else {"status": "error", "code": r.status_code}
-    )
+    """Fetch GitHub user profile metadata with client-side caching and timeout guard.
+
+    Args:
+        username: Target GitHub username.
+
+    Returns:
+        Normalized dictionary with user profile payload or error diagnostics.
+    """
+    try:
+        r = requests.get(f"https://api.github.com/users/{username}", timeout=10)
+        return handle_response(r)
+    except requests.exceptions.RequestException:
+        return {"status": "error", "reason": "network_timeout"}
 
 
 @st.cache_data(ttl=3600)
 def fetch_repos(username: str) -> dict:
-    r = requests.get(
-        f"https://api.github.com/users/{username}/repos",
-        params={"per_page": 100, "sort": "updated"},
-    )
-    return (
-        {"status": "success", "data": r.json()}
-        if r.status_code == 200
-        else {"status": "error", "code": r.status_code}
-    )
+    """Fetch up to 100 public repositories for a user, sorted by last updated.
+
+    Args:
+        username: Target GitHub username.
+
+    Returns:
+        Normalized dictionary with repository listing or error diagnostics.
+    """
+    try:
+        r = requests.get(
+            f"https://api.github.com/users/{username}/repos",
+            params={"per_page": 100, "sort": "updated"},
+            timeout=10,
+        )
+        return handle_response(r)
+    except requests.exceptions.RequestException:
+        return {"status": "error", "reason": "network_timeout"}
 
 
 @st.cache_data(ttl=3600)
 def fetch_events(username: str) -> list:
-    r = requests.get(
-        f"https://api.github.com/users/{username}/events/public",
-        params={"per_page": 30},
-    )
-    return r.json() if r.status_code == 200 else []
+    """Fetch recent public events for a user to extract push and contribution trends.
+
+    Args:
+        username: Target GitHub username.
+
+    Returns:
+        List of event objects, or empty list on failure or network timeout.
+    """
+    try:
+        r = requests.get(
+            f"https://api.github.com/users/{username}/events/public",
+            params={"per_page": 30},
+            timeout=10,
+        )
+        return r.json() if r.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        return []
 
 
-def calculate_account_age(created_at_str: str) -> tuple:
-    created_dt = datetime.strptime(created_at_str, "%Y-%m-%dT%H:%M:%SZ")
-    delta = datetime.utcnow() - created_dt
+# ==============================================================================
+# Data Transformation Utilities
+# ==============================================================================
+
+
+def calculate_account_age(created_at_str: str | None) -> tuple[str, str]:
+    """Compute human-readable account tenure and formatted creation date.
+
+    Args:
+        created_at_str: ISO-8601 formatted date string from GitHub (UTC), or None.
+
+    Returns:
+        A tuple of (tenure_duration_string, formatted_date_string).
+    """
+    if not created_at_str:
+        return "Unknown", "Unknown"
+
+    created_dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+    delta = datetime.now(timezone.utc) - created_dt
     years = delta.days // 365
     months = (delta.days % 365) // 30
     return f"{years}y {months}m", created_dt.strftime("%b %d, %Y")
 
+
+# ==============================================================================
+# Search Input & Preset Quick-Select Controls
+# ==============================================================================
 
 col_input, col_examples = st.columns([3, 2], vertical_alignment="bottom")
 
@@ -96,7 +182,12 @@ with col_examples:
 
 st.divider()
 
+# ==============================================================================
+# Application State Rendering
+# ==============================================================================
+
 if not target_user:
+    # Landing / Empty State view
     st.subheader("How this tool works")
 
     sc1, sc2, sc3 = st.columns(3)
@@ -132,21 +223,44 @@ if not target_user:
         )
 
 else:
+    # Active query execution & UI rendering
     with st.spinner("Fetching data..."):
         p_res = fetch_profile(target_user)
         r_res = fetch_repos(target_user)
         events = fetch_events(target_user)
 
         if p_res["status"] == "error":
-            st.error("User not found or API limits exceeded.")
+            # Surface contextual diagnostic error messages
+            reason = p_res.get("reason")
+            if reason == "not_found":
+                st.error(
+                    f"User '{target_user}' not found on GitHub. Please check the username and try again."
+                )
+            elif reason == "rate_limit":
+                st.error(
+                    "GitHub API rate limit exceeded. Please wait a while before trying again."
+                )
+            elif reason == "network_timeout":
+                st.error(
+                    "Network timeout occurred while fetching data. Please check your connection and try again."
+                )
+            else:
+                st.error(
+                    f"An unexpected error occurred while fetching data (Code {p_res.get('code')})."
+                )
         else:
             prof = p_res["data"]
-            repos = r_res["data"] if r_res["status"] == "success" else []
+            repos = r_res["data"] if r_res.get("status") == "success" else []
 
+            # ------------------------------------------------------------------
+            # Profile Sidebar & Primary Metrics Layout
+            # ------------------------------------------------------------------
             left_col, right_col = st.columns([1, 3])
 
             with left_col:
-                st.image(prof.get("avatar_url"), width=180)
+                # Avatar and core bio details
+                if prof.get("avatar_url"):
+                    st.image(prof.get("avatar_url"), width=180)
                 st.subheader(prof.get("name") or prof.get("login"))
                 st.caption(f"@{prof.get('login')}")
 
@@ -160,6 +274,7 @@ else:
                     st.write(f"Website: {prof.get('blog')}")
 
             with right_col:
+                # Aggregate high-level repository & follower counters
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Followers", f"{prof.get('followers', 0):,}")
                 m2.metric("Public Repos", prof.get("public_repos", 0))
@@ -171,6 +286,9 @@ else:
 
                 st.write("")
 
+                # --------------------------------------------------------------
+                # Language Distribution Chart (Altair)
+                # --------------------------------------------------------------
                 st.subheader("Languages")
                 langs = [r.get("language") for r in repos if r.get("language")]
 
@@ -205,13 +323,23 @@ else:
 
                 st.divider()
 
+                # --------------------------------------------------------------
+                # Account Activity & Metadata Metrics
+                # --------------------------------------------------------------
                 st.subheader("Account Details")
 
                 age_str, date_str = calculate_account_age(prof.get("created_at"))
-                last_updated = datetime.strptime(
-                    prof.get("updated_at"), "%Y-%m-%dT%H:%M:%SZ"
-                ).strftime("%b %d, %Y")
 
+                raw_updated_at = prof.get("updated_at")
+                last_updated = (
+                    datetime.fromisoformat(
+                        raw_updated_at.replace("Z", "+00:00")
+                    ).strftime("%b %d, %Y")
+                    if raw_updated_at
+                    else "Unknown"
+                )
+
+                # Filter and count recent push events from public activity feed
                 push_events = [e for e in events if e.get("type") == "PushEvent"]
                 push_count = len(push_events)
 
@@ -224,6 +352,7 @@ else:
                     "Public activity sample",
                 )
 
+                # Secondary biographical attributes
                 d1, d2, d3 = st.columns(3)
                 d1.write(f"**Public Gists:** {prof.get('public_gists', 0)}")
                 d2.write(f"**Following:** {prof.get('following', 0)}")
