@@ -1,0 +1,43 @@
+/* ==========================================================================
+   Terminal UI Theme: Typography & Component Styling
+   ========================================================================== */
+
+/* 1. Primary web font with instant local system fallbacks */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+html,
+body,
+[class*="css"],
+* {
+  font-family:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace !important;
+}
+
+/* 2. Streamlit metric container card aesthetics */
+div[data-testid="metric-container"] {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+  font-weight: 700;
+}
+
+/* 3. Empty state landing cards */
+.empty-card {
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+/* 4. Headings typography refinement */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.5px;
+}

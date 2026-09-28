@@ -6,6 +6,7 @@ and programming language distributions.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import altair as alt
 import pandas as pd
@@ -22,27 +23,20 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
+
+def load_css(file_path: str = "assets/style.css") -> None:
+    """Read and inject an external CSS stylesheet into the Streamlit document.
+
+    Args:
+        file_path: Relative or absolute path to the target CSS stylesheet.
     """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-* { font-family: 'Inter', sans-serif; }
-div[data-testid="metric-container"] {
-    background: rgba(128, 128, 128, 0.04);
-    border: 1px solid rgba(128, 128, 128, 0.12);
-    padding: 16px;
-    border-radius: 6px;
-}
-.empty-card {
-    border: 1px solid rgba(128, 128, 128, 0.15);
-    border-radius: 6px;
-    padding: 20px;
-    background: rgba(128, 128, 128, 0.02);
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+    css_file = Path(file_path)
+    if css_file.exists():
+        with open(css_file, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+
+load_css()
 
 st.title("GitHub Intelligence")
 st.markdown(
