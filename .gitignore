@@ -1,0 +1,11 @@
+# Prevent tracking of agentic workflows and architectural artifacts
+docs/
+.agents/
+AGENTS.md
+
+# Ignore Python runtime caches to maintain repository hygiene
+__pycache__/
+*.pyc
+
+# Crucial: Prevent Streamlit API keys and configurations from leaking
+.streamlit/secrets.toml
