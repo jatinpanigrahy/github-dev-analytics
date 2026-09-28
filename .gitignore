@@ -3,9 +3,10 @@ docs/
 .agents/
 AGENTS.md
 
-# Ignore Python runtime caches to maintain repository hygiene
+# Ignore Python runtime caches and virtual environments
 __pycache__/
 *.pyc
+.venv/
 
 # Crucial: Prevent Streamlit API keys and configurations from leaking
 .streamlit/secrets.toml
