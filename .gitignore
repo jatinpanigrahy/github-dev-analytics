@@ -10,3 +10,6 @@ __pycache__/
 
 # Crucial: Prevent Streamlit API keys and configurations from leaking
 .streamlit/secrets.toml
+
+# Testing
+.pytest_cache/
