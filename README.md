@@ -61,7 +61,7 @@ The application interfaces directly with the GitHub REST API, utilizing in-memor
 5. Run tests:
 
    ```bash
-   pytest
+   python -m pytest
    ```
 
 6. Launch the application:
