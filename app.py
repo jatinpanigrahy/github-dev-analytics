@@ -1,4 +1,4 @@
-"""GitHub Intelligence Dashboard.
+"""GitHub Developer Analytics.
 
 A Streamlit application interfacing directly with the GitHub REST API to
 extract, aggregate, and visualize developer profiles, repository statistics,
@@ -20,7 +20,7 @@ from src.utils import calculate_account_age
 # ==============================================================================
 
 st.set_page_config(
-    page_title="GitHub Intelligence",
+    page_title="GitHub Developer Analytics",
     page_icon="assets/favicon.svg",
     layout="wide",
 )
@@ -48,7 +48,7 @@ load_css()
 st.markdown(
     """
     <a href="/" target="_self" style="text-decoration: none; color: inherit;">
-        <h3 style="margin: 0; display: inline-block;">GITHUB INTEL DASHBOARD <span class="terminal-cursor"></span></h3>
+        <h3 style="margin: 0; display: inline-block;">GITHUB DEVELOPER <span style="white-space: nowrap;">ANALYTICS <span class="terminal-cursor"></span></span></h3>
     </a>
     """,
     unsafe_allow_html=True,

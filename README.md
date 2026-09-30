@@ -1,52 +1,70 @@
-# GitHub Intelligence Dashboard
+# GitHub Developer Analytics
 
-A fast, lightweight dashboard that gives you instant insights into any public GitHub profile. It shows developer activity, code languages used, and account stats.
+A fast, interactive dashboard to visualize GitHub profiles and repository data in real-time. Built with Python and Streamlit, featuring automated caching and a clean, responsive design.
 
 ## Preview
 
 ![App Preview](assets/app-preview.png)
 
-**🔗 [View Live Application](https://jatinp-inteldashboard.streamlit.app/)**
+**🔗 [View Live Application](https://jatinp-gh-analytics.streamlit.app/)**
 
 ## Core Features
 
-- **Profile Overview:** See the user's basic info, account age, and followers.
-- **Codebase Analysis:** Beautiful charts showing which programming languages they use most.
-- **Activity Metrics:** Keep track of recent updates and public events.
-- **Smart Data Fetching:** Directly talks to GitHub's API while being mindful of limits.
+- **Developer Profiles:** Instantly view user statistics, account age, and network size.
+- **Language Analytics:** Interactive charts visualizing the primary programming languages used across public repositories.
+- **Activity Tracking:** Monitor recent updates, repository counts, and commit history.
 
-## Architecture & Technical Decisions
+## Technical Overview
 
-This project was built with a focus on speed and reliability:
+The application interfaces directly with the GitHub REST API, utilizing in-memory caching and graceful error handling to manage rate limits efficiently. It is built on a modular architecture that separates data fetching, processing, and the user interface, and is backed by a continuous integration pipeline (GitHub Actions) for automated testing.
 
-- **Smart Caching:** The app uses `@st.cache_data` to save API results. This means if you search the same user twice, it loads instantly and doesn't waste API calls.
-- **Rate Limit Protection:** GitHub only allows 60 free requests per hour per IP. The dashboard catches errors (like `403 Rate Limit Exceeded`) gracefully and tells the user exactly what went wrong, rather than just crashing.
-- **Timezone Aware:** All dates fetched from GitHub are converted properly to UTC so they display correctly no matter where the user is.
+## UI & Design
 
-## UI & Design Decisions
-
-- **Terminal Aesthetic:** A custom `style.css` gives the app a clean, retro "Terminal" look.
-- **System Fonts:** To keep the app loading as fast as possible, it relies on fonts that are already installed on your computer (like `Consolas` or `Monaco`) instead of forcing you to download heavy web fonts.
+- **Clean, Focused Design:** A custom CSS theme provides a distraction-free, highly readable interface.
+- **Fast Loading:** The application relies on system-default fonts to minimize loading times and reduce external dependencies.
 
 ## Tech Stack
 
-- **Frontend & Logic:** Python + Streamlit
-- **Data Handling:** Pandas
-- **Charts:** Altair
-- **Network:** Requests (RESTful APIs)
+- **Language:** Python
+- **Framework:** Streamlit
+- **Data & Visualization:** Pandas, Altair
+- **Testing & CI:** Pytest, GitHub Actions
+- **Network:** Requests (GitHub REST API)
 
 ## Running it Locally
 
-1. Make sure you have Python installed.
-2. Clone this project.
-3. Turn on your virtual environment (`.venv`).
-4. Install the required tools:
+1. Ensure you have Python installed on your system.
+
+2. Clone the repository:
+
+   ```bash
+   git clone https://github.com/jatinpanigrahy/github-dev-analytics.git
+   cd github-dev-analytics
+   ```
+
+3. Activate your virtual environment (e.g., `.venv`):
+
+   ```bash
+   python -m venv .venv
+   # Windows (PowerShell):
+   .\.venv\Scripts\Activate.ps1
+   # macOS/Linux:
+   source .venv/bin/activate
+   ```
+
+4. Install the required dependencies:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-5. Run the app:
+5. Run tests:
+
+   ```bash
+   pytest
+   ```
+
+6. Launch the application:
 
    ```bash
    streamlit run app.py
@@ -54,6 +72,6 @@ This project was built with a focus on speed and reliability:
 
 ## Deployment
 
-This application is deployed via Streamlit Community Cloud.
+This application is deployed and hosted via Streamlit Community Cloud.
 
-**Live Application:** <https://jatinp-inteldashboard.streamlit.app/>
+**Live Application:** <https://jatinp-gh-analytics.streamlit.app/>
