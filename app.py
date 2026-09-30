@@ -1,17 +1,19 @@
 """GitHub Intelligence Dashboard.
 
-A Streamlit-based OSINT application interfacing with the GitHub REST API
-to extract, aggregate, and visualize developer profiles, repository statistics,
+A Streamlit application interfacing directly with the GitHub REST API to
+extract, aggregate, and visualize developer profiles, repository statistics,
 and programming language distributions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import altair as alt
 import pandas as pd
-import requests
 import streamlit as st
+import streamlit.components.v1 as components
+from src.api import fetch_events, fetch_profile, fetch_repos
+from src.utils import calculate_account_age
 
 # ==============================================================================
 # Page Configuration & Global Styling
@@ -25,10 +27,10 @@ st.set_page_config(
 
 
 def load_css(file_path: str = "assets/style.css") -> None:
-    """Read and inject an external CSS stylesheet into the Streamlit document.
+    """Read and inject an external CSS stylesheet into the Streamlit DOM.
 
     Args:
-        file_path: Relative or absolute path to the target CSS stylesheet.
+        file_path: Relative or absolute file path to the target stylesheet.
     """
     css_file = Path(file_path)
     if css_file.exists():
@@ -38,237 +40,215 @@ def load_css(file_path: str = "assets/style.css") -> None:
 
 load_css()
 
-st.title("GitHub Intelligence")
+# ==============================================================================
+# Top Navigation & Brand Header
+# ==============================================================================
+
+# Interactive brand header: clicking returns to root URL / reloads clean state
 st.markdown(
-    "View developer profiles, repository statistics, and programming languages."
+    """
+    <a href="/" target="_self" style="text-decoration: none; color: inherit;">
+        <h3 style="margin: 0; display: inline-block;">GITHUB INTEL DASHBOARD <span class="terminal-cursor"></span></h3>
+    </a>
+    """,
+    unsafe_allow_html=True,
 )
+st.markdown("VIEW AND ANALYZE GITHUB PROFILES, REPOSITORIES, AND ACTIVITY IN REAL-TIME")
 
 # ==============================================================================
-# Network Integration Layer (GitHub REST API)
+# Search & Execution Controls
 # ==============================================================================
 
+# Inject client-side JavaScript to autofocus search input on programmatic reset
+if st.session_state.pop("focus_search", False):
+    components.html(
+        """
+        <script>
+            const input = window.parent.document.querySelector('input[data-testid="stTextInputRootElement"] input, input[placeholder*="USERNAME"]');
+            if (input) {
+                input.focus();
+            }
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
-def handle_response(r: requests.Response) -> dict:
-    """Evaluate an HTTP response from the GitHub API and normalize into an outcome dictionary.
+with st.form(key="search_form", border=False):
+    col_input, col_btn = st.columns([4, 1], vertical_alignment="bottom")
 
-    Args:
-        r: Raw requests.Response instance.
+    with col_input:
+        raw_input = st.text_input(
+            "Username",
+            placeholder="ENTER GITHUB USERNAME",
+            label_visibility="collapsed",
+            key="target_input",
+        ).strip()
 
-    Returns:
-        Dictionary containing standardized outcome status ('success' or 'error')
-        along with the JSON payload or failure diagnostics.
-    """
-    if r.status_code == 200:
-        return {"status": "success", "data": r.json()}
-    elif r.status_code == 403:
-        # Standard GitHub API rate-limit exceeded indicator
-        return {"status": "error", "reason": "rate_limit", "code": 403}
-    elif r.status_code == 404:
-        return {"status": "error", "reason": "not_found", "code": 404}
-    else:
-        return {"status": "error", "reason": "unknown", "code": r.status_code}
-
-
-@st.cache_data(ttl=3600)
-def fetch_profile(username: str) -> dict:
-    """Fetch GitHub user profile metadata with client-side caching and timeout guard.
-
-    Args:
-        username: Target GitHub username.
-
-    Returns:
-        Normalized dictionary with user profile payload or error diagnostics.
-    """
-    try:
-        r = requests.get(f"https://api.github.com/users/{username}", timeout=10)
-        return handle_response(r)
-    except requests.exceptions.RequestException:
-        return {"status": "error", "reason": "network_timeout"}
-
-
-@st.cache_data(ttl=3600)
-def fetch_repos(username: str) -> dict:
-    """Fetch up to 100 public repositories for a user, sorted by last updated.
-
-    Args:
-        username: Target GitHub username.
-
-    Returns:
-        Normalized dictionary with repository listing or error diagnostics.
-    """
-    try:
-        r = requests.get(
-            f"https://api.github.com/users/{username}/repos",
-            params={"per_page": 100, "sort": "updated"},
-            timeout=10,
+    with col_btn:
+        scan_clicked = st.form_submit_button(
+            "INITIATE SCAN", type="primary", use_container_width=True
         )
-        return handle_response(r)
-    except requests.exceptions.RequestException:
-        return {"status": "error", "reason": "network_timeout"}
 
+# Quick-select sample profiles
+p1, p2, p3, _ = st.columns([1, 1, 1, 3])
+if p1.button("torvalds", use_container_width=True):
+    st.session_state["active_user"] = "torvalds"
+if p2.button("tiangolo", use_container_width=True):
+    st.session_state["active_user"] = "tiangolo"
+if p3.button("gaearon", use_container_width=True):
+    st.session_state["active_user"] = "gaearon"
 
-@st.cache_data(ttl=3600)
-def fetch_events(username: str) -> list:
-    """Fetch recent public events for a user to extract push and contribution trends.
+if scan_clicked and raw_input:
+    st.session_state["active_user"] = raw_input
 
-    Args:
-        username: Target GitHub username.
-
-    Returns:
-        List of event objects, or empty list on failure or network timeout.
-    """
-    try:
-        r = requests.get(
-            f"https://api.github.com/users/{username}/events/public",
-            params={"per_page": 30},
-            timeout=10,
-        )
-        return r.json() if r.status_code == 200 else []
-    except requests.exceptions.RequestException:
-        return []
-
-
-# ==============================================================================
-# Data Transformation Utilities
-# ==============================================================================
-
-
-def calculate_account_age(created_at_str: str | None) -> tuple[str, str]:
-    """Compute human-readable account tenure and formatted creation date.
-
-    Args:
-        created_at_str: ISO-8601 formatted date string from GitHub (UTC), or None.
-
-    Returns:
-        A tuple of (tenure_duration_string, formatted_date_string).
-    """
-    if not created_at_str:
-        return "Unknown", "Unknown"
-
-    created_dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-    delta = datetime.now(timezone.utc) - created_dt
-    years = delta.days // 365
-    months = (delta.days % 365) // 30
-    return f"{years}y {months}m", created_dt.strftime("%b %d, %Y")
-
-
-# ==============================================================================
-# Search Input & Preset Quick-Select Controls
-# ==============================================================================
-
-col_input, col_examples = st.columns([3, 2], vertical_alignment="bottom")
-
-with col_input:
-    target_user = st.text_input(
-        "Username",
-        placeholder="Enter GitHub username (e.g., torvalds)...",
-        label_visibility="collapsed",
-    ).strip()
-
-with col_examples:
-    c1, c2, c3, _ = st.columns([1, 1, 1, 1])
-    if c1.button("torvalds", use_container_width=True):
-        target_user = "torvalds"
-    if c2.button("tiangolo", use_container_width=True):
-        target_user = "tiangolo"
-    if c3.button("pallets", use_container_width=True):
-        target_user = "pallets"
-
+target_user = st.session_state.get("active_user", "")
 st.divider()
 
 # ==============================================================================
-# Application State Rendering
+# Main Application View
 # ==============================================================================
 
 if not target_user:
-    # Landing / Empty State view
-    st.subheader("How this tool works")
+    # --------------------------------------------------------------------------
+    # Landing State: Overview and Highlights
+    # --------------------------------------------------------------------------
+    st.markdown(
+        """
+        <div style="text-align: center; margin-top: 1.5rem; margin-bottom: 2rem;">
+            <h1 style="font-size: 2.2rem; letter-spacing: 2px;">
+                EXPLORE. ANALYZE. VISUALIZE.
+            </h1>
+            <p style="color: #888888; font-size: 1rem;">
+                Real-time developer profiles and repository analytics.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    sc1, sc2, sc3 = st.columns(3)
-    with sc1:
+    # Feature cards (styled via assets/style.css to enforce uniform height)
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
         st.markdown(
             """
-        <div class="empty-card">
-            <h4>Profile Info</h4>
-            <p style="font-size: 14px; color: gray;">Extracts basic user details, follower counts, and availability status.</p>
-        </div>
-        """,
+            <div class="feature-card">
+                <h4><span class="material-symbols-rounded" style="color: #00FF41;">visibility</span>PROFILE INSIGHTS</h4>
+                <p>Explore follower metrics, public metadata, and developer biographies.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    with sc2:
+
+    with c2:
         st.markdown(
             """
-        <div class="empty-card">
-            <h4>Code Stats</h4>
-            <p style="font-size: 14px; color: gray;">Calculates total stars, forks, and the primary programming languages used.</p>
-        </div>
-        """,
+            <div class="feature-card">
+                <h4><span class="material-symbols-rounded" style="color: #00FF41;">bar_chart</span>STACK ANALYSIS</h4>
+                <p>Parse public repositories to aggregate and visualize language distribution.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    with sc3:
+
+    with c3:
         st.markdown(
             """
-        <div class="empty-card">
-            <h4>Recent Activity</h4>
-            <p style="font-size: 14px; color: gray;">Checks account creation dates and recent public push events.</p>
-        </div>
-        """,
+            <div class="feature-card">
+                <h4><span class="material-symbols-rounded" style="color: #00FF41;">radar</span>ACTIVITY TRACKING</h4>
+                <p>Track public push events, account tenure, and recent contributions.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
 else:
-    # Active query execution & UI rendering
-    with st.spinner("Fetching data..."):
+    # --------------------------------------------------------------------------
+    # Loading State: Data Retrieval Progress
+    # --------------------------------------------------------------------------
+    with st.status(
+        f"Fetching data for {target_user}...", expanded=True
+    ) as status:
+        st.write("> Connecting to GitHub REST API... [OK]")
         p_res = fetch_profile(target_user)
+
+        st.write("> Extracting repository and language stats... [OK]")
         r_res = fetch_repos(target_user)
+
+        st.write("> Inspecting public event stream and recent activity... [OK]")
         events = fetch_events(target_user)
 
-        if p_res["status"] == "error":
-            # Surface contextual diagnostic error messages
-            reason = p_res.get("reason")
-            if reason == "not_found":
-                st.error(
-                    f"User '{target_user}' not found on GitHub. Please check the username and try again."
-                )
-            elif reason == "rate_limit":
-                st.error(
-                    "GitHub API rate limit exceeded. Please wait a while before trying again."
-                )
-            elif reason == "network_timeout":
-                st.error(
-                    "Network timeout occurred while fetching data. Please check your connection and try again."
-                )
-            else:
-                st.error(
-                    f"An unexpected error occurred while fetching data (Code {p_res.get('code')})."
-                )
+        status.update(
+            label=f"Data retrieved for {target_user}",
+            state="complete",
+            expanded=False,
+        )
+
+    # --------------------------------------------------------------------------
+    # Error Handling & Diagnostic Routing
+    # --------------------------------------------------------------------------
+    if p_res.get("status") == "error":
+        reason = p_res.get("reason")
+        if reason == "not_found":
+            st.error(
+                f"User '{target_user}' not found on GitHub. Please check the username and try again."
+            )
+        elif reason == "rate_limit":
+            st.error(
+                "GitHub API rate limit exceeded (60 req/hr). Please wait a while before retrying."
+            )
+        elif reason == "network_timeout":
+            st.error(
+                "Network timeout occurred while fetching data. Please check your connection and try again."
+            )
         else:
-            prof = p_res["data"]
-            repos = r_res["data"] if r_res.get("status") == "success" else []
+            st.error(
+                f"An unexpected error occurred while fetching data (Code: {p_res.get('code')})."
+            )
 
-            # ------------------------------------------------------------------
-            # Profile Sidebar & Primary Metrics Layout
-            # ------------------------------------------------------------------
-            left_col, right_col = st.columns([1, 3])
+    else:
+        prof = p_res["data"]
+        repos = r_res["data"] if r_res.get("status") == "success" else []
 
-            with left_col:
-                # Avatar and core bio details
-                if prof.get("avatar_url"):
-                    st.image(prof.get("avatar_url"), width=180)
-                st.subheader(prof.get("name") or prof.get("login"))
-                st.caption(f"@{prof.get('login')}")
+        # ----------------------------------------------------------------------
+        # Main Layout: Profile and Analytics (Two Columns)
+        # ----------------------------------------------------------------------
+        left_col, right_col = st.columns([1, 3])
 
-                if prof.get("bio"):
-                    st.write(prof.get("bio"))
-                if prof.get("location"):
-                    st.write(f"Location: {prof.get('location')}")
-                if prof.get("company"):
-                    st.write(f"Company: {prof.get('company')}")
-                if prof.get("blog"):
-                    st.write(f"Website: {prof.get('blog')}")
+        # Left Column: Profile Summary
+        with left_col:
+            # Smooth in-app navigation reset with automatic search input autofocus
+            if st.button("← NEW SCAN", use_container_width=True):
+                st.session_state["active_user"] = ""
+                st.session_state["focus_search"] = True
+                st.rerun()
 
-            with right_col:
-                # Aggregate high-level repository & follower counters
+            st.write("")
+
+            if prof.get("avatar_url"):
+                st.image(prof.get("avatar_url"), use_container_width=True)
+            st.subheader(prof.get("name") or prof.get("login"))
+            st.caption(f"@{prof.get('login')}")
+
+            if prof.get("bio"):
+                st.write(prof.get("bio"))
+
+            st.divider()
+
+            if prof.get("location"):
+                st.write(f"**Location:** {prof.get('location')}")
+            if prof.get("company"):
+                st.write(f"**Company:** {prof.get('company')}")
+            if prof.get("blog"):
+                st.write(f"**Website:** {prof.get('blog')}")
+
+        # Right Column: Tabbed Analytics
+        with right_col:
+            tab_overview, tab_codebase = st.tabs(["Overview", "Codebase Analytics"])
+
+            with tab_overview:
+                # Primary Metric Cards
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Followers", f"{prof.get('followers', 0):,}")
                 m2.metric("Public Repos", prof.get("public_repos", 0))
@@ -278,50 +258,10 @@ else:
                 m3.metric("Total Stars", f"{stars:,}")
                 m4.metric("Total Forks", f"{forks:,}")
 
-                st.write("")
-
-                # --------------------------------------------------------------
-                # Language Distribution Chart (Altair)
-                # --------------------------------------------------------------
-                st.subheader("Languages")
-                langs = [r.get("language") for r in repos if r.get("language")]
-
-                if langs:
-                    df = pd.DataFrame(langs, columns=["Language"])
-                    counts = df["Language"].value_counts().reset_index()
-                    counts.columns = ["Language", "Repositories"]
-
-                    chart = (
-                        alt.Chart(counts)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X(
-                                "Repositories:Q",
-                                title="Repository Count",
-                                axis=alt.Axis(tickMinStep=1),
-                            ),
-                            y=alt.Y(
-                                "Language:N",
-                                sort="-x",
-                                title="",
-                                axis=alt.Axis(labelLimit=1000, minExtent=120),
-                            ),
-                            tooltip=["Language", "Repositories"],
-                        )
-                        .properties(height=250)
-                    )
-
-                    st.altair_chart(chart, use_container_width=True)
-                else:
-                    st.info("No language data found in public repositories.")
-
                 st.divider()
 
-                # --------------------------------------------------------------
-                # Account Activity & Metadata Metrics
-                # --------------------------------------------------------------
+                # Account Activity & Tenure
                 st.subheader("Account Details")
-
                 age_str, date_str = calculate_account_age(prof.get("created_at"))
 
                 raw_updated_at = prof.get("updated_at")
@@ -333,7 +273,6 @@ else:
                     else "Unknown"
                 )
 
-                # Filter and count recent push events from public activity feed
                 push_events = [e for e in events if e.get("type") == "PushEvent"]
                 push_count = len(push_events)
 
@@ -346,8 +285,48 @@ else:
                     "Public activity sample",
                 )
 
-                # Secondary biographical attributes
+                st.write("")
                 d1, d2, d3 = st.columns(3)
                 d1.write(f"**Public Gists:** {prof.get('public_gists', 0)}")
                 d2.write(f"**Following:** {prof.get('following', 0)}")
                 d3.write(f"**Hireable:** {'Yes' if prof.get('hireable') else 'No'}")
+
+            with tab_codebase:
+                # Language Distribution Chart
+                st.subheader("Language Distribution")
+                langs = [r.get("language") for r in repos if r.get("language")]
+
+                if langs:
+                    df = pd.DataFrame(langs, columns=["Language"])
+                    counts = df["Language"].value_counts().reset_index()
+                    counts.columns = ["Language", "Repositories"]
+
+                    chart = (
+                        alt.Chart(counts)
+                        .mark_bar(color="#00FF41")
+                        .encode(
+                            x=alt.X(
+                                "Repositories:Q",
+                                title="Repository Count",
+                                axis=alt.Axis(grid=False, tickMinStep=1),
+                            ),
+                            y=alt.Y(
+                                "Language:N",
+                                sort="-x",
+                                title="",
+                                axis=alt.Axis(
+                                    grid=False,
+                                    ticks=False,
+                                    labelLimit=1000,
+                                    minExtent=120,
+                                ),
+                            ),
+                            tooltip=["Language", "Repositories"],
+                        )
+                        .properties(height=280)
+                        .configure_view(strokeWidth=0)
+                    )
+
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.info("No language data found in public repositories.")

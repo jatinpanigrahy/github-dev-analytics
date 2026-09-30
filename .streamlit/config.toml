@@ -1,0 +1,18 @@
+[theme]
+# Base UI mode
+base = "dark"
+
+# Primary accent color for interactive controls and focus highlights (Classic Neon Green)
+primaryColor = "#00FF41"
+
+# Primary workspace canvas background (True Black)
+backgroundColor = "#000000"
+
+# Secondary surface background for cards, inputs, and containment borders
+secondaryBackgroundColor = "#0D1117"
+
+# High-contrast readable typography color (Stark White)
+textColor = "#EDEDED"
+
+# Enforced monospace typography across all UI text elements
+font = "monospace"
